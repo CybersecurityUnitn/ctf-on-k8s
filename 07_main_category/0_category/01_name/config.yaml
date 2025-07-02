@@ -1,0 +1,44 @@
+# The title of the challenge, that will be displayed on the platform
+title: Title of the challenge
+
+# Description of the challenge to be shown on the CTFd interface
+description: Description of the challenge to be shown on the CTFd interface
+
+# Template for the connection info with the host and port of the challenge, e.g., nc {{host}} {{port}}
+connection_info: http://{{host}}:{{port}} 
+
+# The flag, CHECK THE REGEX!
+flag: UniTN{[a-zA-Z0-9_?!$.,]+}
+
+# Points: 100: easy, 200: medium, 300: tough, 400: hard, 500: insane
+points: 500
+
+# Nickname of the author
+author: author
+
+# List of docker networks that the challenge should be connected to (see below on how to create a docker network)
+networks:
+  - internal
+
+# List of files that should be downloadable by users on the CTFd interface
+public: 
+  - ./src/index.html
+
+# The type of the challenge, can be either "standard" (default, points do not decrease), or "dynamic" (points decrease after each solve)
+type: standard
+
+# List of challenges that must be solved for this challenge to be visible by the user
+# each requirement should be in the same category, and should be the unique name of the challenge
+# (i.e. the name of the folder containing this file, e.g. 01_command_injection)
+requires:
+  - 01_requirement
+
+# List of hints, having the text and cost fields.
+# The text field can contain some markdown
+# The order is important!
+hints:
+  - text: This is a very useful hint # The hint that will be displayed after the user buys it
+    cost: 20 # The cost (in user's points) to unlock the hint
+
+# Additional yaml code to be added to the docker-compose
+docker_args:
