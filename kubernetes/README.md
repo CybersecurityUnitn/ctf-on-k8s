@@ -45,7 +45,7 @@ Since challenges are deployed on ports <30000 (in our case, you can decide to go
 sudo vim /etc/systemd/system/k3s.service
 ```
 
-and add `'--service-node-port-range=MIN_PORT-MAX_PORT` to the `ExecStart` command.
+and add `'--service-node-port-range=MIN_PORT-MAX_PORT'` to the `ExecStart` command.
 
 Then, we need to reload the systemd configuration and restart k3s:
 
@@ -157,7 +157,7 @@ sudo systemctl restart k3s
 Finally, we need to configure the DNS to resolve `registry.localhost` to the IP address of the Kubernetes node. This can be done by adding an entry to the `/etc/hosts` file on the server:
 
 ```bash
-REGISTRY_IP=$(kubectl get svc docker-registry-service -n default -o jsonpath='{.spec.clusterIP}')
+REGISTRY_IP=$(kubectl get svc docker-registry-service -n docker-registry -o jsonpath='{.spec.clusterIP}')
 echo "$REGISTRY_IP registry.localhost" | sudo tee -a /etc/hosts
 ```
 
@@ -166,6 +166,22 @@ After deploying the registry, we can push images to it using the following comma
 ```bash
 docker build -t registry.localhost/test:latest .
 docker push registry.localhost/test:latest
+```
+
+## Python env
+
+The script kubernetes_deployer.py requires specific modules. The fastest way to do this is to create an environment with [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html).
+
+After installation, create the enviroment by using:
+
+```bash
+micromamba create -f micromamba-env.yaml
+```
+
+It will automatically install all the dependencies. To activate it, simply use:
+
+```bash
+micromamba activate ctfkube
 ```
 
 ## k9s

@@ -29,6 +29,7 @@ class ChallengeConfig:
         title: str,
         description: str,
         connection_info: str,
+        protocol: str,
         flag: str,
         points: int,
         author: str,
@@ -42,6 +43,7 @@ class ChallengeConfig:
         self.title: str = title
         self.description: str = description
         self.connection_info: str = connection_info
+        self.protocol: str = protocol
         self.flag: str = flag
         self.points: int = points
         self.author: str = author
@@ -59,6 +61,7 @@ class ChallengeConfig:
                 title=config["title"],
                 description=config["description"] if "description" in config and config["description"] else "",
                 connection_info=config["connection_info"] if "connection_info" in config and config["connection_info"] else "",
+                protocol=config["protocol"] if "protocol" in config and config["protocol"] else "TCP",
                 flag=config["flag"],
                 points=config["points"],
                 author=config["author"] if "author" in config and config["author"] else "unitn",

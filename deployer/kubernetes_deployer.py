@@ -210,6 +210,14 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
                 print(f"Skipping {challenge.id} because it has no Dockerfile.")
             continue
 
+        containers = [{
+            "name": challenge.id,
+            "image": f"{REGISTRY}{challenge.id}",
+            "ports": [{
+                "containerPort": DEFAULT_INTERNAL_PORT
+            }],
+        }]
+
         # Create the deployment
         deployment =         {
             "apiVersion": "apps/v1",
@@ -233,13 +241,7 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
                         }
                     },
                     "spec": {
-                        "containers": [{
-                            "name": challenge.id,
-                            "image": f"{REGISTRY}{challenge.id}",
-                            "ports": [{
-                                "containerPort": DEFAULT_INTERNAL_PORT
-                            }]
-                        }],
+                        "containers": containers,
                         "restartPolicy": "Always"
                     }
                 }
@@ -304,12 +306,13 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
             "spec": {
                 "type": "LoadBalancer",
                 "externalTrafficPolicy": "Local",
+                "sessionAffinity": "ClientIP",
                 "selector": {
                     "challenge": challenge.id
                 },
                 "ports": [
                     {
-                        "protocol": "TCP",
+                        "protocol": challenge.config.protocol,
                         "port": challenge.port,
                         "targetPort": DEFAULT_INTERNAL_PORT,
                         "nodePort": challenge.port

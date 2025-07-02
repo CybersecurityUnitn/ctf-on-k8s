@@ -1,0 +1,8 @@
+name: ctfkube
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip:
+      - kubernetes==33.1.0
+      - rich==14.0.0

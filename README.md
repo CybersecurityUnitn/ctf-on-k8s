@@ -177,12 +177,8 @@ This script is responsible for deploying the challenges on Kubernetes. It:
 2. Creates the necessary Kubernetes resources to run the challenges and have them accessible from the outside. Specifically, for each challenge, it creates:
 
    - A `Deployment`: contains the Docker image that will be used to create the pods.
-   - A `Service`: exposes the challenge to the outside world, so that it can be accessed from the CTFd platform. This is where the outside port is assigned (based on the folder name of the challenge). The service is of type `LoadBalancer`, so that it can be accessed from the outside world.
+   - A `Service`: exposes the challenge to the outside world, so that it can be accessed from the CTFd platform. This is where the outside port is assigned (based on the folder name of the challenge). The service is of type `LoadBalancer`, so that it can be accessed from the outside world, and it routes traffic to the backend pods based on IP address.
    - Optionally, a `HorizontalPodAutoscaler`: if the challenge is configured to be scalable, it will automatically scale the number of pods based on the CPU usage.
-
-## Issues You May Want to Solve
-
-If challenges are not developed to be run in more than one container at the same time, they might not work properly. For example, if a web challenge is containerized and includes a database (i.e., the database is not shared among multiple containers), if there are multiple instances of the challenge running, depending on the load balancer, the user might be redirected to a different instance of the challenge, which might not have the same state as the one the user is interacting with. This can lead to unexpected behavior, such as not being able to login or not being able to access certain features of the challenge.
 
 ## Authors
 
