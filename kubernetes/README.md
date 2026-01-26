@@ -33,6 +33,30 @@ To avoid the need to use `sudo` when running `kubectl` commands, we need to chan
 sudo chown -R $USER $HOME/.kube
 ```
 
+### Connect `kubectl` to the Cluster Remotely
+
+To connect `kubectl` to a remote cluster, we can use `k3sup` as well. On our local machine (not the server where k3s is installed), we need to run:
+
+```bash
+k3sup install \
+  --skip-install \
+  --ip <SERVER_IP_ADDRESS> \
+  --user <USER> \
+  --ssh-key <PATH/TO/SSH_KEY> \
+  --local-path ~/.kube/config \
+  --merge
+```
+
+Where `<SERVER_IP_ADDRESS>` is the IP address of the server where k3s is installed, and `<USER>` is the user we use to connect to the server via SSH.
+
+And finally, we need to do a port forwarding of the Kubernetes API server port (6443) from the server to our local machine:
+
+```bash
+ssh -L 6443:localhost:6443 <USER>@<SERVER_IP_ADDRESS>
+```
+
+Now we should be able to run `kubectl` commands from our local machine.
+
 ### Configure Kubernetes
 
 #### Increase the Maximum Number of Pods Allowed

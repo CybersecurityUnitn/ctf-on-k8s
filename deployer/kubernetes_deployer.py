@@ -234,7 +234,10 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
             "apiVersion": "v1",
             "kind": "Namespace",
             "metadata": {
-                "name": NAMESPACE
+                "name": NAMESPACE,
+                "labels": {
+                    f"{CTFD_HOST}/managed-by": "true"
+                }
             }
         }
         core_v1.create_namespace(body=namespace)
@@ -262,12 +265,16 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
             "metadata": {
                 "name": challenge.id,
                 "namespace": NAMESPACE,
+                "labels": {
+                    f"{CTFD_HOST}/managed-by": "true"
+                }
             },
             "spec": {
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
-                        "challenge": challenge.id
+                        "challenge": challenge.id,
+                        f"{CTFD_HOST}/managed-by": "true"
                     }
                 },
                 "template": {
