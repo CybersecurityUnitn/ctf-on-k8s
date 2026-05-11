@@ -151,9 +151,9 @@ To configure k3s to use the local registry we need to add the following to the `
 
 ```yaml
 mirrors:
-  "registry.localhost:5000":
+  "registry.local:5000":
     endpoint:
-      - "http://registry.localhost:5000"
+      - "http://registry.local:5000"
 ```
 
 This command also marks the registry as insecure, using HTTP. We should then notify Docker about this insecure registry. First, create the Docker configuration directory if it does not exist:
@@ -167,7 +167,7 @@ Then, create the file `/etc/docker/daemon.json` with the following content:
 ```json
 {
   "insecure-registries": [
-    "registry.localhost:5000"
+    "registry.local:5000"
   ]
 }
 ```
@@ -190,20 +190,20 @@ We may need to restart k3s to apply the changes:
 sudo systemctl restart k3s
 ```
 
-Finally, we need to configure the DNS to resolve `registry.localhost` to the IP address of the registry service (`10.43.16.113` in the example above).
+Finally, we need to configure the DNS to resolve `registry.local` to the IP address of the registry service (`10.43.16.113` in the example above).
 
 We can do this by adding the following line to the `/etc/hosts` file:
 
 ```bash
 REGISTRY_IP=$(kubectl get svc docker-registry-service -n docker-registry -o jsonpath='{.spec.clusterIP}')
-echo "$REGISTRY_IP registry.localhost" | sudo tee -a /etc/hosts
+echo "$REGISTRY_IP registry.local" | sudo tee -a /etc/hosts
 ```
 
 After deploying the registry, we can push images to it using the following command:
 
 ```bash
-docker build -t registry.localhost/test:latest .
-docker push registry.localhost/test:latest
+docker build -t registry.local/test:latest .
+docker push registry.local/test:latest
 ```
 
 ## Python Environment

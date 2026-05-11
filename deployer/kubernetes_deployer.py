@@ -8,7 +8,8 @@ from kubernetes import client, config
 from multiprocessing import Pool
 from dotenv import load_dotenv
 from scanner import Challenge
-from rich import print
+from rich.logging import RichHandler
+import logging
 import subprocess
 import sys
 import os
@@ -25,7 +26,7 @@ DEFAULT_INTERNAL_PORT = 5000
 REGISTRY = os.environ.get("REGISTRY")
 NAMESPACE = os.environ.get("NAMESPACE")
 CTFD_HOST = os.environ.get("CTFD_HOST")
-verbose = False
+logger = logging.getLogger(__name__)
 
 def create_or_update_service(service: dict):
     '''
@@ -83,8 +84,7 @@ def run_command(command: str):
     '''
     Run a command in a subprocess and notify on failure.
     '''
-    if verbose:
-        print(f"{command}", flush=True)
+    logger.debug("Running command: %s", command)
 
     completed = subprocess.run(
         command,
@@ -95,13 +95,11 @@ def run_command(command: str):
     )
 
     if completed.returncode != 0:
-        print(f"[red]Command failed with exit code {completed.returncode}: {command}[/red]", file=sys.stderr)
+        logger.error("Command failed with exit code %s: %s", completed.returncode, command)
         if completed.stdout:
-            print("[yellow]--- STDOUT ---[/yellow]")
-            print(completed.stdout)
+            logger.error("STDOUT:\n%s", completed.stdout.rstrip())
         if completed.stderr:
-            print("[yellow]--- STDERR ---[/yellow]", file=sys.stderr)
-            print(completed.stderr, file=sys.stderr)
+            logger.error("STDERR:\n%s", completed.stderr.rstrip())
 
 
 def update_pods(images: list[str]):
@@ -120,13 +118,13 @@ def update_pods(images: list[str]):
         if answer.lower() == "y":
             for pod_name in pods_to_delete:
                 core_v1.delete_namespaced_pod(namespace=NAMESPACE, name=pod_name)
-                print(f"Deleted pod {pod_name}")
+                logger.info("Deleted pod %s", pod_name)
 
 def build_and_push_images(challenges: list[Challenge], ignore_existing: bool = False):
     '''
     Build the images for the challenges and push them to the registry.
     '''
-    print("Building and pushing images... sudo is required.")
+    logger.info("Building and pushing images... sudo is required.")
 
     images_repo_digests = {}
 
@@ -140,36 +138,60 @@ def build_and_push_images(challenges: list[Challenge], ignore_existing: bool = F
             if repository not in images_repo_digests: # Only the first digest is saved
                 images_repo_digests[repository] = digest
 
-    if not ignore_existing:
-        images_repositories = []
-
     build_commands = []
-    push_commands = []
     for challenge in challenges:
         if not os.path.exists(f"{challenge.path}/Dockerfile"):
-            if verbose:
-                print(f"Skipping {challenge.id} because it has no Dockerfile.")
+            logger.debug("Skipping %s because it has no Dockerfile.", challenge.id)
             continue
 
         tag = f"{REGISTRY}{challenge.id}"
 
-        if tag in images_repositories:
-            if verbose:
-                print(f"Image {tag} already in the registry.")
+        build_commands.append(f"sudo docker build -t {tag} {challenge.path}")
+
+    # Build the images
+    logger.info("Building %s images...", len(build_commands))
+    with Pool() as pool:
+        pool.map(run_command, build_commands)
+
+        pool.close()
+        pool.join()
+    logger.info("Finished building images.")
+
+    push_commands = []
+    for challenge in challenges:
+        if not os.path.exists(f"{challenge.path}/Dockerfile"):
+            logger.debug("Skipping %s because it has no Dockerfile.", challenge.id)
             continue
 
-        build_commands.append(f"sudo docker build -t {tag} {challenge.path}")
+        tag = f"{REGISTRY}{challenge.id}"
+                # Check if the image is already in the registry and has the same digest, if so skip pushing it
+        if tag in images_repo_digests:
+            # Get the digest of the built image
+            built_image_digest = subprocess.run("sudo docker images --format '{{.Repository}}__:__{{.Digest}}'" + f" {tag}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if built_image_digest.returncode != 0:
+                logger.error("Failed to get the digest of the built image %s", tag)
+                if built_image_digest.stdout:
+                    logger.error("STDOUT:\n%s", built_image_digest.stdout.rstrip())
+                if built_image_digest.stderr:
+                    logger.error("STDERR:\n%s", built_image_digest.stderr.rstrip())
+                continue
+
+            built_image_digest = built_image_digest.stdout.strip().split("__:__")[1]
+
+            if images_repo_digests[tag] == built_image_digest and built_image_digest != "":
+                logger.debug("Image %s already in the registry with the same digest, skipping push.", tag)
+                continue
 
         # Push the image to the registry only if it is not already there
         push_commands.append(f"sudo docker push {tag}")
 
-    # Build the images
-    with Pool() as pool:
-        pool.map(run_command, build_commands)
-
     # # Push the images to the registry
+    logger.info("Pushing %s images...", len(push_commands))
     with Pool() as pool:
         pool.map(run_command, push_commands)
+        pool.close()
+        pool.join()
+    logger.info("Finished pushing images.")
 
     # Get the updated images in the registry
     images = subprocess.run("sudo docker images --format '{{.Repository}}__:__{{.Digest}}'", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -185,36 +207,36 @@ def build_and_push_images(challenges: list[Challenge], ignore_existing: bool = F
                     updated_images.append(repository)
 
     if len(updated_images) > 0:
-        print(f"Updated images: {updated_images}")
+        logger.info("Updated images: %s", updated_images)
         update_pods(updated_images)
 
 def clean_cluster():
     '''
     Delete all the resources created by this script.
     '''
-    print("Cleaning the cluster...")
+    logger.info("Cleaning the cluster...")
     resources = core_v1.list_namespaced_service(namespace=NAMESPACE, label_selector=f"{CTFD_HOST}/managed-by=true")
-    print(f"Deleting {len(resources.items)} services...")
+    logger.info("Deleting %s services...", len(resources.items))
     for resource in resources.items:
         core_v1.delete_namespaced_service(namespace=NAMESPACE, name=resource.metadata.name)
 
     resources = apps_v1.list_namespaced_deployment(namespace=NAMESPACE, label_selector=f"{CTFD_HOST}/managed-by=true")
-    print(f"Deleting {len(resources.items)} deployments...")
+    logger.info("Deleting %s deployments...", len(resources.items))
     for resource in resources.items:
         apps_v1.delete_namespaced_deployment(namespace=NAMESPACE, name=resource.metadata.name)
 
-    print("Cluster cleaned.")
+    logger.info("Cluster cleaned.")
 
 def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool = False):
     '''
     For each challenge, build the image,
     then create a deployment and a service.
     '''
-    print(f"Creating resources for {len(challenges)} challenges...")
+    logger.info("Creating resources for %s challenges... Press Enter to continue...", len(challenges))
     try:
-        input("Press Enter to continue...")
+        input()
     except KeyboardInterrupt:
-        print("Aborted.")
+        logger.info("Aborted.")
         return
 
     deployed_deployments = []
@@ -229,7 +251,7 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
     try:
         core_v1.read_namespace(name=NAMESPACE)
     except Exception as e:
-        print(f"Namespace {NAMESPACE} does not exist, creating it...")
+        logger.info("Namespace %s does not exist, creating it...", NAMESPACE)
         namespace = {
             "apiVersion": "v1",
             "kind": "Namespace",
@@ -241,13 +263,12 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
             }
         }
         core_v1.create_namespace(body=namespace)
-        print(f"Namespace {NAMESPACE} created.")
+        logger.info("Namespace %s created.", NAMESPACE)
 
     for challenge in challenges:
         # If the challenge has no Dockerfile, skip it
         if not os.path.exists(f"{challenge.path}/Dockerfile"):
-            if verbose:
-                print(f"Skipping {challenge.id} because it has no Dockerfile.")
+            logger.debug("Skipping %s because it has no Dockerfile.", challenge.id)
             continue
 
         containers = [{
@@ -292,15 +313,12 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
             }
         }
 
-        if verbose:
-            print(f"Deployment for {challenge.id}: {deployment}")
-        else:
-            print(f"Deployment for {challenge.id} created")
+        logger.info("Deployment for %s created", challenge.id)
         try:
             create_or_update_resource(deployment)
             deployed_deployments.append(challenge)
         except Exception as e:
-            print(f"[magenta]Failed to create deployment for {challenge.id}[/magenta]: {e}", file=sys.stderr)
+            logger.error("Failed to create deployment for %s: %s", challenge.id, e)
 
         # Create the HorizontalPodAutoscaler, if the challenge is rated
         if 1 + 1 == 1: # Make this a condition on the challenge to have the script create an autoscaler
@@ -326,15 +344,12 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
                 }
             }
 
-            if verbose:
-                print(f"HorizontalPodAutoscaler for {challenge.id}: {hpa}")
-            else:
-                print(f"HorizontalPodAutoscaler for {challenge.id} created")
+            logger.info("HorizontalPodAutoscaler for %s created", challenge.id)
             try:
                 create_or_update_resource(hpa)
                 deployed_hpas.append(challenge)
             except Exception as e:
-                print(f"[magenta]Failed to create HorizontalPodAutoscaler for {challenge.id}[/magenta]: {e}", file=sys.stderr)
+                logger.error("Failed to create HorizontalPodAutoscaler for %s: %s", challenge.id, e)
 
         # Create the service
         service = {
@@ -368,12 +383,9 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
         try:
             create_or_update_resource(service)
             deployed_services.append(challenge)
-            if verbose:
-                print(f"Service for {challenge.id}: {service} on port {challenge.port}")
-            else:
-                print(f"Service for {challenge.id}: on port {challenge.port}")
+            logger.info("Service for %s: on port %s", challenge.id, challenge.port)
         except Exception as e:
-            print(f"[magenta]Failed to create service for {challenge.id}[/magenta]: {e}", file=sys.stderr)
+            logger.error("Failed to create service for %s: %s", challenge.id, e)
 
     # Get all the running deployments and delete the ones that are not in the list of deployed challenges
     deployments = apps_v1.list_namespaced_deployment(namespace=NAMESPACE)
@@ -387,7 +399,7 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
         if answer.lower() == "y":
             for deployment_name in deployments_to_delete:
                 apps_v1.delete_namespaced_deployment(namespace=NAMESPACE, name=deployment_name)
-                print(f"Deleted deployment {deployment_name}")
+                logger.info("Deleted deployment %s", deployment_name)
 
     # Get all the running services and delete the ones that are not in the list of deployed challenges
     services = core_v1.list_namespaced_service(namespace=NAMESPACE)
@@ -401,7 +413,7 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
         if answer.lower() == "y":
             for service_name in services_to_delete:
                 core_v1.delete_namespaced_service(namespace=NAMESPACE, name=service_name)
-                print(f"Deleted service {service_name}")
+                logger.info("Deleted service %s", service_name)
 
     hpas = autoscaling_v1.list_namespaced_horizontal_pod_autoscaler(namespace=NAMESPACE)
     hpas_to_delete = []
@@ -414,7 +426,7 @@ def main(challenges: list[Challenge], build_images: bool, ignore_existing: bool 
         if answer.lower() == "y":
             for hpa_name in hpas_to_delete:
                 core_v1.delete_namespaced_horizontal_pod_autoscaler(namespace=NAMESPACE, name=hpa_name)
-                print(f"Deleted HorizontalPodAutoscaler {hpa_name}")
+                logger.info("Deleted HorizontalPodAutoscaler %s", hpa_name)
 
 def dict_to_yaml(d: dict, indent: int = 0) -> str:
     result = ""
@@ -441,18 +453,25 @@ if __name__ == "__main__":
 
     parser.add_argument("-i", "--ignore-existing", help="Ignore existing images in the registry (do not overwrite)", action="store_true", default=False)
 
-    parser.add_argument("-v", "--verbose", help="Print the resources to stdout", action="store_true", default=False)
+    parser.add_argument("-v", "--verbose", help="Enable debug logging", action="store_true", default=False)
 
     parser.add_argument("--clean", help="Clean the cluster from all the challenges", action="store_true")
 
     args = parser.parse_args()
 
-    verbose = args.verbose
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(message)s",
+        handlers=[RichHandler(show_time=args.verbose, show_path=args.verbose)],
+    )
+
+    # Set the kubernetes client logger to warning to avoid cluttering the output
+    logging.getLogger("kubernetes").setLevel(logging.WARNING)
 
     if args.clean:
         answer = input("Are you sure you want to delete all the challenges? [y/N] ")
         if answer.lower() != "y":
-            print("Aborted.")
+            logger.info("Aborted.")
             sys.exit(0)
         clean_cluster()
         sys.exit(0)

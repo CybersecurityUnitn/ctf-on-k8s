@@ -253,9 +253,19 @@ def main(challenges: list[Challenge]):
     for challenge in challenges:
         if challenge.config.requires is not None:
             logger.info(f"Setting requirements for {challenge.id}...")
+            requires = []
+            for req in challenge.config.requires:
+                req = req.replace("_", "-")
+                req_id = f"{challenge.category}-{req}"
+                if req_id not in processed_challenges:
+                    req_id = f"{challenge.category}-{re.sub(r'^\\d{2}-', '', req)}"
+                if req_id not in processed_challenges:
+                    logger.error(f"Cannot resolve requirement '{req}' for challenge '{challenge.id}'")
+                    sys.exit(1)
+                requires.append(processed_challenges[req_id])
             set_requirement(
                 processed_challenges[challenge.id],
-                [processed_challenges[f'{challenge.category}-{req.replace("_", "-")}'] for req in challenge.config.requires]
+                requires
             )
 
     # Delete challenges that are not in the config
