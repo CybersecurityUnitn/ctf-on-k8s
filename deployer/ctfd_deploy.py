@@ -37,6 +37,9 @@ def create_hints(challenge_id: str, hints: list[Hint]):
         f"https://{CTFD_HOST}/api/v1/challenges/{challenge_id}/hints",
         headers=HEADERS,
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch hints for challenge {challenge_id}: {r.status_code} {r.text}")
+        sys.exit(1)
 
     existing_hints = r.json()["data"]
     if len(existing_hints) > 0:
@@ -59,9 +62,8 @@ def create_hints(challenge_id: str, hints: list[Hint]):
                 }
             },
         )
-
         if r.status_code != 200:
-            logger.error(f"Failed to create hint for challenge {challenge_id}: {r.text}")
+            logger.error(f"Failed to create hint for challenge {challenge_id}: {r.status_code} {r.text}")
             sys.exit(1)
         
         prev_hints_ids.append(r.json()["data"]["id"])
@@ -72,6 +74,9 @@ def create_flag(challenge_id: str, flag: str):
         f"https://{CTFD_HOST}/api/v1/challenges/{challenge_id}/flags",
         headers=HEADERS,
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch flags for challenge {challenge_id}: {r.status_code} {r.text}")
+        sys.exit(1)
 
     flags = r.json()["data"]
     if len(flags) == 0:
@@ -86,6 +91,10 @@ def create_flag(challenge_id: str, flag: str):
                 "data": ""
             },
         )
+        if r.status_code != 200:
+            logger.error(f"Failed to create flag for challenge {challenge_id}: {r.status_code} {r.text}")
+            sys.exit(1)
+
     else:
         current_flag = flags[0]["content"]
         if current_flag != flag:
@@ -97,6 +106,9 @@ def create_flag(challenge_id: str, flag: str):
                     "content": f"{flag}",
                 },
             )
+            if r.status_code != 200:
+                logger.error(f"Failed to update flag for challenge {challenge_id}: {r.status_code} {r.text}")
+                sys.exit(1)
 
 def upload_files(challenge_id: str, challenge: Challenge):
     # Get the file list and delete them all
@@ -104,6 +116,9 @@ def upload_files(challenge_id: str, challenge: Challenge):
         f"https://{CTFD_HOST}/api/v1/challenges/{challenge_id}/files",
         headers=HEADERS,
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch files for challenge {challenge_id}: {r.status_code} {r.text}")
+        sys.exit(1)
 
     files = r.json()["data"]
     for file in files:
@@ -111,6 +126,9 @@ def upload_files(challenge_id: str, challenge: Challenge):
             f"https://{CTFD_HOST}/api/v1/files/{file['id']}",
             headers=HEADERS,
         )
+        if r.status_code != 200:
+            logger.error(f"Failed to delete file {file['id']}: {r.status_code} {r.text}")
+            sys.exit(1)
 
     # Upload files
     if challenge.config.public is not None:
@@ -128,6 +146,9 @@ def upload_files(challenge_id: str, challenge: Challenge):
                     "file": (os.path.basename(file), open(os.path.join(challenge.path, file), "rb")),
                 }
             )
+            if r.status_code != 200:
+                logger.error(f"Failed to upload file {file} for challenge {challenge_id}: {r.status_code} {r.text}")
+                sys.exit(1)
 
 def set_requirement(challenge_id: str, requires: list[str]):
     r = requests.patch(
@@ -139,6 +160,9 @@ def set_requirement(challenge_id: str, requires: list[str]):
             },
         },
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to set requirements for challenge {challenge_id}: {r.status_code} {r.text}")
+        sys.exit(1)
 
 def deploy_challenge(challenge: Challenge, challenge_id: str | None = None) -> str:
 
@@ -180,7 +204,7 @@ def deploy_challenge(challenge: Challenge, challenge_id: str | None = None) -> s
             json=body,
         )
         if r.status_code != 200:
-            logger.error(f"Failed to create challenge {challenge.name} in category {category}: {r.text}")
+            logger.error(f"Failed to create challenge {challenge.name} in category {category}: {r.status_code} {r.text}")
             sys.exit(1)
         challenge_id = r.json()["data"]["id"]
     else:
@@ -206,6 +230,9 @@ def get_challenge(challenge_id: int) -> dict:
         f"https://{CTFD_HOST}/api/v1/challenges/{challenge_id}",
         headers=HEADERS,
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch challenge {challenge_id}: {r.status_code} {r.text}")
+        sys.exit(1)
 
     chall = r.json()["data"]
     chall_id = CHALL_ID_REGEX.search(chall["description"]).group(1)
@@ -220,6 +247,10 @@ def get_challenges() -> list:
             "view": "admin"
         }
     )
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch challenges: {r.status_code} {r.text}")
+        sys.exit(1)
+
     challenges = r.json()["data"]
 
     ret = dict()
